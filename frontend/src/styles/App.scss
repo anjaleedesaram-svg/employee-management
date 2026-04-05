@@ -1,0 +1,260 @@
+@use 'variables' as *;
+@use 'mixins' as *;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: $background;
+  color: $text;
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.header {
+  background: white;
+  border-bottom: 1px solid $border;
+  padding: 16px 0;
+  margin-bottom: 24px;
+
+  &__inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  &__title {
+    font-size: 24px;
+    font-weight: 600;
+  }
+
+  &__nav {
+    display: flex;
+    gap: 16px;
+  }
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &--primary {
+    background: $primary;
+    color: white;
+
+    &:hover { background: darken($primary, 10%); }
+  }
+
+  &--secondary {
+    background: $secondary;
+    color: white;
+
+    &:hover { background: darken($secondary, 10%); }
+  }
+
+  &--danger {
+    background: $danger;
+    color: white;
+
+    &:hover { background: darken($danger, 10%); }
+  }
+
+  &--success {
+    background: $success;
+    color: white;
+
+    &:hover { background: darken($success, 10%); }
+  }
+
+  &--sm {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}
+
+.card {
+  @include card;
+}
+
+.form {
+  &__group {
+    margin-bottom: 16px;
+  }
+
+  &__label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    color: $text;
+  }
+
+  &__input,
+  &__select {
+    @include input-base;
+  }
+
+  &__error {
+    color: $danger;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 24px;
+  }
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th, td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid $border;
+  }
+
+  th {
+    font-weight: 600;
+    color: $secondary;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+
+  tr:hover {
+    background: rgba($primary, 0.04);
+  }
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+
+  &--active { background: rgba($success, 0.1); color: $success; }
+  &--inactive { background: rgba($secondary, 0.1); color: $secondary; }
+  &--on-leave { background: rgba($warning, 0.1); color: $warning; }
+  &--terminated { background: rgba($danger, 0.1); color: $danger; }
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  @include flex-center;
+  z-index: 1000;
+
+  &__content {
+    @include card;
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+
+    h2 { font-size: 20px; }
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: $secondary;
+  }
+}
+
+.pagination {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 24px;
+
+  &__btn {
+    padding: 8px 12px;
+    border: 1px solid $border;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    &--active {
+      background: $primary;
+      color: white;
+      border-color: $primary;
+    }
+  }
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+
+  &__card {
+    @include card;
+    text-align: center;
+
+    h3 {
+      font-size: 32px;
+      color: $primary;
+    }
+
+    p {
+      color: $secondary;
+      font-size: 14px;
+    }
+  }
+}
+
+.search-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+
+  &__input {
+    @include input-base;
+    flex: 1;
+  }
+
+  &__select {
+    @include input-base;
+    width: 150px;
+  }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px;
+  color: $secondary;
+}
