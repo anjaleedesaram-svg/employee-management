@@ -3,7 +3,7 @@ stages:
 
 build_backend:
  stage: build
- image: maven:3.9-eclipse-temurin-17
+ image: maven:3.9-eclipse-temurin-21
  script:
    - cd backend
    - mvn clean package
