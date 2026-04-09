@@ -65,17 +65,13 @@ jobs:
               -p 80:80 \
               --network app-network \
               yourname/employee-frontend:latest
-```
-
----
 
 ## Secrets to add in GitHub
-```
-GitHub repo → Settings → Secrets → Actions → New secret
+##  GitHub repo → Settings → Secrets → Actions → New secret
 
-DOCKER_USERNAME    → your Docker Hub username
-DOCKER_PASSWORD    → your Docker Hub password
-REMOTE_HOST        → your remote server IP e.g. 192.168.1.100
-REMOTE_USER        → ssh username e.g. ubuntu
-REMOTE_SSH_KEY     → contents of your ~/.ssh/id_rsa private key
-DB_PASSWORD        → your postgres password
+##  DOCKER_USERNAME    → your Docker Hub username
+##  DOCKER_PASSWORD    → your Docker Hub password
+##  REMOTE_HOST        → your remote server IP e.g. 192.168.1.100
+##  REMOTE_USER        → ssh username e.g. ubuntu
+##  REMOTE_SSH_KEY     → contents of your ~/.ssh/id_rsa private key
+##  DB_PASSWORD        → your postgres password 
