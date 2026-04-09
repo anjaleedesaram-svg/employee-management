@@ -41,7 +41,7 @@ server:
   port: ${SERVER_PORT:8080}
 
 cors:
-  allowed-origins: ${CORS_ORIGINS:http://localhost:3000}
+  allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://208.87.132.36:3000,http://appemployee-management.info}
 
 management:
   endpoints:
