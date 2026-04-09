@@ -1,0 +1,81 @@
+# .github/workflows/deploy.yml
+
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]       # triggers on every push to main
+
+jobs:
+
+  build-and-push:
+    runs-on: ubuntu-latest  # GitHub's cloud server builds this
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./back
+          push: true
+          tags: yourname/employee-backend:latest
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./front
+          push: true
+          tags: yourname/employee-frontend:latest
+
+  deploy:
+    needs: build-and-push     # waits for build to finish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH into remote server and deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.REMOTE_HOST }}       # your remote server IP
+          username: ${{ secrets.REMOTE_USER }}   # e.g. ubuntu
+          key: ${{ secrets.REMOTE_SSH_KEY }}     # private SSH key
+
+          script: |
+            docker pull yourname/employee-backend:latest
+            docker pull yourname/employee-frontend:latest
+
+            docker stop backend frontend || true
+            docker rm backend frontend || true
+
+            docker run -d --name backend \
+              -p 8080:8080 \
+              -e DB_HOST=postgres \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              --network app-network \
+              yourname/employee-backend:latest
+
+            docker run -d --name frontend \
+              -p 80:80 \
+              --network app-network \
+              yourname/employee-frontend:latest
+```
+
+---
+
+## Secrets to add in GitHub
+```
+GitHub repo → Settings → Secrets → Actions → New secret
+
+DOCKER_USERNAME    → your Docker Hub username
+DOCKER_PASSWORD    → your Docker Hub password
+REMOTE_HOST        → your remote server IP e.g. 192.168.1.100
+REMOTE_USER        → ssh username e.g. ubuntu
+REMOTE_SSH_KEY     → contents of your ~/.ssh/id_rsa private key
+DB_PASSWORD        → your postgres password
