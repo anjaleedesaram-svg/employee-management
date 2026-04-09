@@ -1,19 +1,147 @@
-# .github/workflows/deploy.yml
+name: Build, Test and Deploy
 
-name: Build and Deploy
-
+# ── Triggers ──────────────────────────────────────────────────────────────────
 on:
   push:
-    branches: [main]       # triggers on every push to main
+    branches:
+      - main          # deploy on push to main
+      - staging       # deploy on push to staging
+  pull_request:
+    branches:
+      - main          # only run tests on PRs, no deploy
 
+# ── Global env vars ───────────────────────────────────────────────────────────
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  BACKEND_IMAGE:   ${{ secrets.DOCKER_USERNAME }}/employee-backend
+  FRONTEND_IMAGE:  ${{ secrets.DOCKER_USERNAME }}/employee-frontend
+
+# ═════════════════════════════════════════════════════════════════════════════
+# JOB 1 — Test Backend
+# ═════════════════════════════════════════════════════════════════════════════
 jobs:
+  test-backend:
+    name: Test Backend
+    runs-on: ubuntu-latest
 
-  build-and-push:
-    runs-on: ubuntu-latest  # GitHub's cloud server builds this
+    # Spin up PostgreSQL for integration tests
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB:       employee_db_test
+          POSTGRES_USER:     postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven           # caches ~/.m2 between runs
+
+      - name: Run tests
+        working-directory: ./back
+        env:
+          DB_HOST:     localhost
+          DB_PORT:     5432
+          DB_NAME:     employee_db_test
+          DB_USER:     postgres
+          DB_PASSWORD: postgres
+          JWT_SECRET:  dGVzdHNlY3JldGtleWZvcmNpdGVzdGluZ29ubHk=
+          KAFKA_BOOTSTRAP_SERVERS: localhost:9092   # kafka not needed for unit tests
+          SPRING_KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+        run: mvn clean test -q
+
+      - name: Upload test results
+        if: always()             # upload even if tests fail
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: back/target/surefire-reports/
+
+# ═════════════════════════════════════════════════════════════════════════════
+# JOB 2 — Test Frontend
+# ═════════════════════════════════════════════════════════════════════════════
+  test-frontend:
+    name: Test Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./front
+        run: npm ci                # ci is faster and stricter than npm install
+
+      - name: Type check
+        working-directory: ./front
+        run: npm run type-check
+
+      - name: Lint
+        working-directory: ./front
+        run: npm run lint
+
+      - name: Build
+        working-directory: ./front
+        env:
+          VITE_API_URL: /api/v1    # use relative path for production build
+        run: npm run build
+
+# ═════════════════════════════════════════════════════════════════════════════
+# JOB 3 — Build and Push Docker Images
+# Only runs on push to main or staging (not on PRs)
+# ═════════════════════════════════════════════════════════════════════════════
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]    # only runs if both tests pass
+    if: github.event_name == 'push'         # skip on pull requests
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Generate image tag from branch + short commit SHA
+      # main   → latest + main-abc1234
+      # staging → staging-abc1234
+      - name: Generate image tag
+        id: meta
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          BRANCH=${{ github.ref_name }}
+          if [ "$BRANCH" = "main" ]; then
+            echo "version=latest"         >> $GITHUB_OUTPUT
+            echo "extra_tag=main-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${BRANCH}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            echo "extra_tag=${BRANCH}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3    # enables multi-platform builds + caching
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -21,57 +149,222 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build & push backend
+      # ── Build Backend ───────────────────────────────────────────────────────
+      - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
-          context: ./back
-          push: true
-          tags: yourname/employee-backend:latest
+          context:    ./back
+          dockerfile: ./back/Dockerfile
+          push:       true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.version }}
+            ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.extra_tag }}
+          # Cache layers from previous builds — speeds up builds significantly
+          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache
+          cache-to:   type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache,mode=max
 
-      - name: Build & push frontend
+      # ── Build Frontend ──────────────────────────────────────────────────────
+      - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
-          context: ./front
-          push: true
-          tags: yourname/employee-frontend:latest
+          context:    ./front
+          dockerfile: ./front/Dockerfile
+          push:       true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.version }}
+            ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.extra_tag }}
+          build-args: |
+            VITE_API_URL=/api/v1
+          cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache
+          cache-to:   type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache,mode=max
 
-  deploy:
-    needs: build-and-push     # waits for build to finish
+# ═════════════════════════════════════════════════════════════════════════════
+# JOB 4 — Deploy to Staging
+# Runs only on push to staging branch
+# ═════════════════════════════════════════════════════════════════════════════
+  deploy-staging:
+    name: Deploy to Staging
     runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref_name == 'staging'
+    environment: staging           # links to GitHub environment for approval rules
 
     steps:
-      - name: SSH into remote server and deploy
+      - name: Deploy to staging server
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.REMOTE_HOST }}       # your remote server IP
-          username: ${{ secrets.REMOTE_USER }}   # e.g. ubuntu
-          key: ${{ secrets.REMOTE_SSH_KEY }}     # private SSH key
-
+          host:     ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key:      ${{ secrets.STAGING_SSH_KEY }}
+          port:     ${{ secrets.STAGING_SSH_PORT || 22 }}
           script: |
-            docker pull yourname/employee-backend:latest
-            docker pull yourname/employee-frontend:latest
+            set -e    # stop on any error
 
-            docker stop backend frontend || true
-            docker rm backend frontend || true
+            IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
+            echo "Deploying tag: $IMAGE_TAG"
 
-            docker run -d --name backend \
+            # Pull new images
+            docker pull ${{ env.BACKEND_IMAGE }}:$IMAGE_TAG
+            docker pull ${{ env.FRONTEND_IMAGE }}:$IMAGE_TAG
+
+            # Create network if not exists
+            docker network create app-network 2>/dev/null || true
+
+            # ── Stop and remove old containers ──────────────────────────────
+            docker stop  backend-staging  2>/dev/null || true
+            docker rm    backend-staging  2>/dev/null || true
+            docker stop  frontend-staging 2>/dev/null || true
+            docker rm    frontend-staging 2>/dev/null || true
+
+            # ── Start Backend ───────────────────────────────────────────────
+            docker run -d \
+              --name backend-staging \
+              --network app-network \
+              --restart unless-stopped \
               -p 8080:8080 \
-              -e DB_HOST=postgres \
+              -e DB_HOST=${{ secrets.DB_HOST }} \
+              -e DB_PORT=${{ secrets.DB_PORT }} \
+              -e DB_NAME=${{ secrets.STAGING_DB_NAME }} \
+              -e DB_USER=${{ secrets.DB_USER }} \
               -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              --network app-network \
-              yourname/employee-backend:latest
+              -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
+              -e KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }} \
+              -e GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+              -e GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+              -e GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }} \
+              -e GITHUB_CLIENT_SECRET=${{ secrets.GITHUB_CLIENT_SECRET }} \
+              -e OAUTH2_REDIRECT_URI=${{ secrets.STAGING_OAUTH2_REDIRECT_URI }} \
+              ${{ env.BACKEND_IMAGE }}:$IMAGE_TAG
 
-            docker run -d --name frontend \
+            # ── Start Frontend ──────────────────────────────────────────────
+            docker run -d \
+              --name frontend-staging \
+              --network app-network \
+              --restart unless-stopped \
               -p 80:80 \
+              -p 443:443 \
+              ${{ env.FRONTEND_IMAGE }}:$IMAGE_TAG
+
+            # ── Health check — wait up to 60 seconds ────────────────────────
+            echo "Waiting for backend to be healthy..."
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost:8080/actuator/health > /dev/null; then
+                echo "Backend is healthy"
+                break
+              fi
+              echo "Attempt $i/12 — waiting 5 seconds..."
+              sleep 5
+            done
+
+            # ── Clean up old unused images ───────────────────────────────────
+            docker image prune -f
+
+            echo "Staging deploy complete"
+
+# ═════════════════════════════════════════════════════════════════════════════
+# JOB 5 — Deploy to Production
+# Runs only on push to main branch
+# Requires manual approval via GitHub environment protection rules
+# ═════════════════════════════════════════════════════════════════════════════
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref_name == 'main'
+    environment: production        # set up approval in GitHub → Settings → Environments
+
+    steps:
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key:      ${{ secrets.PROD_SSH_KEY }}
+          port:     ${{ secrets.PROD_SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            IMAGE_TAG="latest"
+            echo "Deploying to PRODUCTION — tag: $IMAGE_TAG"
+
+            # Pull new images
+            docker pull ${{ env.BACKEND_IMAGE }}:$IMAGE_TAG
+            docker pull ${{ env.FRONTEND_IMAGE }}:$IMAGE_TAG
+
+            # Create network if not exists
+            docker network create app-network 2>/dev/null || true
+
+            # ── Zero-downtime deploy ─────────────────────────────────────────
+            # Start new containers first, then stop old ones
+
+            # Backend
+            docker run -d \
+              --name backend-new \
               --network app-network \
-              yourname/employee-frontend:latest
+              --restart unless-stopped \
+              -p 8081:8080 \
+              -e DB_HOST=${{ secrets.DB_HOST }} \
+              -e DB_PORT=${{ secrets.DB_PORT }} \
+              -e DB_NAME=${{ secrets.PROD_DB_NAME }} \
+              -e DB_USER=${{ secrets.DB_USER }} \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
+              -e KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }} \
+              -e GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+              -e GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+              -e GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }} \
+              -e GITHUB_CLIENT_SECRET=${{ secrets.GITHUB_CLIENT_SECRET }} \
+              -e OAUTH2_REDIRECT_URI=${{ secrets.PROD_OAUTH2_REDIRECT_URI }} \
+              -e CORS_ORIGINS=${{ secrets.PROD_CORS_ORIGINS }} \
+              ${{ env.BACKEND_IMAGE }}:$IMAGE_TAG
 
-## Secrets to add in GitHub
-##  GitHub repo → Settings → Secrets → Actions → New secret
+            # Wait for new backend to be healthy before switching
+            echo "Waiting for new backend..."
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost:8081/actuator/health > /dev/null; then
+                echo "New backend is healthy — switching over"
+                break
+              fi
+              if [ $i -eq 12 ]; then
+                echo "New backend failed health check — rolling back"
+                docker stop backend-new && docker rm backend-new
+                exit 1
+              fi
+              sleep 5
+            done
 
-##  DOCKER_USERNAME    → your Docker Hub username
-##  DOCKER_PASSWORD    → your Docker Hub password
-##  REMOTE_HOST        → your remote server IP e.g. 192.168.1.100
-##  REMOTE_USER        → ssh username e.g. ubuntu
-##  REMOTE_SSH_KEY     → contents of your ~/.ssh/id_rsa private key
-##  DB_PASSWORD        → your postgres password 
+            # Switch — stop old, rename new
+            docker stop backend  2>/dev/null || true
+            docker rm   backend  2>/dev/null || true
+            docker rename backend-new backend
+            docker update --publish-add 8080:8080 backend 2>/dev/null || true
+
+            # Frontend
+            docker stop  frontend 2>/dev/null || true
+            docker rm    frontend 2>/dev/null || true
+            docker run -d \
+              --name frontend \
+              --network app-network \
+              --restart unless-stopped \
+              -p 80:80 \
+              -p 443:443 \
+              ${{ env.FRONTEND_IMAGE }}:$IMAGE_TAG
+
+            # Cleanup
+            docker image prune -f
+
+            echo "Production deploy complete"
+
+      # Notify on success
+      - name: Notify deploy success
+        if: success()
+        run: |
+          echo "Production deploy succeeded for commit ${{ github.sha }}"
+          # Add Slack / email notification here if needed
+
+      # Notify on failure
+      - name: Notify deploy failure
+        if: failure()
+        run: |
+          echo "Production deploy FAILED for commit ${{ github.sha }}"
+          # Add Slack / email notification here
