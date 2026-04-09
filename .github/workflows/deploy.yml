@@ -24,14 +24,14 @@ jobs:
         with:
           context: ./back
           push: true
-          tags: yourname/employee-backend:latest
+          tags: anja18533s/employee-backend:latest
 
       - name: Build & push frontend
         uses: docker/build-push-action@v5
         with:
           context: ./front
           push: true
-          tags: yourname/employee-frontend:latest
+          tags: anja18533s/employee-frontend:latest
 
   deploy:
     needs: build-and-push     # waits for build to finish
