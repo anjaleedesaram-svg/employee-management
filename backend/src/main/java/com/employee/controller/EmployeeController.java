@@ -14,18 +14,14 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/employees")
-@RequiredArgsConstructor
-origins = {
+@CrossOrigin(
+    origins = {
         "http://localhost:3000",
         "http://208.87.132.36:3000",
-        "http://appemployee-management.info:3000"
+        "http://appemployee-management.info"
     },
-    methods = {
-        RequestMethod.GET,
-        RequestMethod.POST,
-        RequestMethod.PUT,
-        RequestMethod.DELETE
-    }
+    methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE}
+)
 public class EmployeeController {
 
     private final EmployeeService employeeService;
