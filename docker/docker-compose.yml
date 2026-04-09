@@ -15,6 +15,14 @@ services:
     DB_USER: employee_user
     DB_PASSWORD: employee_password
     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    ports:
+      - "9090:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
   frontend:
    build: 
     context: ../frontend
@@ -62,3 +70,4 @@ services:
        -  ./init:/docker-entrypoint-initdb.d
 volumes:
   postgres_data:
+  jenkins_home:
