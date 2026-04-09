@@ -24,14 +24,14 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: anja18533s/employee-backend:latest
+          tags: staffify/employee-backend:latest
 
       - name: Build & push frontend
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
-          tags: anja18533s/employee-frontend:latest
+          tags: staffify/employee-frontend:latest
 
   deploy:
     needs: build-and-push     # waits for build to finish
@@ -43,11 +43,11 @@ jobs:
         with:
           host: ${{ secrets.REMOTE_HOST }}       # your remote server IP
           username: ${{ secrets.REMOTE_USER }}   # e.g. ubuntu
-          key: ${{ secrets.REMOTE_SSH_KEY }}     # private SSH key
+          password: ${{ secrets.REMOTE_PASSWORD }}     # private SSH key
 
           script: |
-            docker pull yourname/employee-backend:latest
-            docker pull yourname/employee-frontend:latest
+            docker pull staffify/employee-backend:latest
+            docker pull staffify/employee-frontend:latest
 
             docker stop backend frontend || true
             docker rm backend frontend || true
@@ -57,9 +57,9 @@ jobs:
               -e DB_HOST=postgres \
               -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
               --network app-network \
-              yourname/employee-backend:latest
+              staffify/employee-backend:latest
 
             docker run -d --name frontend \
               -p 80:80 \
               --network app-network \
-              yourname/employee-frontend:latest
+              staffify/employee-frontend:latest
