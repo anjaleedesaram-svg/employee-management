@@ -49,19 +49,17 @@ jobs:
             docker pull anja18533s/employee-backend:latest
             docker pull anja18533s/employee-frontend:latest
 
-            docker network create app-network || true
-            
-            docker stop backend frontend || true
-            docker rm backend frontend || true
+            docker compose -f docker/docker-compose.yml down || true
+            docker compose -f docker/docker-compose.yml up -d
 
-            docker run -d --name backend \
-              -p 8080:8080 \
-              -e DB_HOST=postgres \
-              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              --network app-network \
-              anja18533s/employee-backend:latest
+            # docker run -d --name backend \
+            #   -p 8080:8080 \
+            #   -e DB_HOST=postgres \
+            #   -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            #   --network app-network \
+            #   anja18533s/employee-backend:latest
 
-            docker run -d --name frontend \
-              -p 80:80 \
-              --network app-network \
-              anja18533s/employee-frontend:latest
+            # docker run -d --name frontend \
+            #   -p 80:80 \
+            #   --network app-network \
+            #   anja18533s/employee-frontend:latest
