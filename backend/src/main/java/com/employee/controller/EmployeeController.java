@@ -18,8 +18,7 @@ import java.util.Map;
 @CrossOrigin(
     origins = {
         "http://localhost:3000",
-        "http://208.87.132.36:3000",
-        "http://appemployee-management.info"
+        "https://appemployee-management.info"
     },
     methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE}
 )
