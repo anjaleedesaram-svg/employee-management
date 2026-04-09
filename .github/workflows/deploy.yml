@@ -49,17 +49,41 @@ jobs:
             docker pull anja18533s/employee-backend:latest
             docker pull anja18533s/employee-frontend:latest
 
-            docker compose -f docker/docker-compose.yml down || true
-            docker compose -f docker/docker-compose.yml up -d
+            # create network if not exists
+            docker network create app-network || true
 
-            # docker run -d --name backend \
-            #   -p 8080:8080 \
-            #   -e DB_HOST=postgres \
-            #   -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-            #   --network app-network \
-            #   anja18533s/employee-backend:latest
+            # stop old containers
+            docker stop backend frontend postgres kafka || true
+            docker rm backend frontend postgres kafka || true
 
-            # docker run -d --name frontend \
-            #   -p 80:80 \
-            #   --network app-network \
-            #   anja18533s/employee-frontend:latest
+            # start postgres
+            docker run -d --name postgres \
+            -e POSTGRES_DB=employee_db \
+            -e POSTGRES_USER=employee_user \
+            -e POSTGRES_PASSWORD=employee_password \
+            --network app-network \
+            postgres:16
+
+            # start kafka (basic version)
+            docker run -d --name kafka \
+            --network app-network \
+            -p 9092:9092 \
+            apache/kafka:3.7.0
+
+            # start backend
+            docker run -d --name backend \
+            -p 8080:8080 \
+            -e DB_HOST=postgres \
+            -e DB_PORT=5432 \
+            -e DB_NAME=employee_db \
+            -e DB_USER=employee_user \
+            -e DB_PASSWORD=employee_password \
+            -e KAFKA_BOOTSTRAP_SERVERS=kafka:9092 \
+             --network app-network \
+            anja18533s/employee-backend:latest
+
+            # start frontend
+            docker run -d --name frontend \
+            -p 80:80 \
+            --network app-network \
+            anja18533s/employee-frontend:latest
