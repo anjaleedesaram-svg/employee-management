@@ -49,6 +49,8 @@ jobs:
             docker pull anja18533s/employee-backend:latest
             docker pull anja18533s/employee-frontend:latest
 
+            docker network create app-network || true
+            
             docker stop backend frontend || true
             docker rm backend frontend || true
 
